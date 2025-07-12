@@ -1,0 +1,259 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// User Management
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  username      String   @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  role          String   @default("VIEWER") // ADMIN, SECURITY_MANAGER, ANALYST, VIEWER
+  department    String?
+  isActive      Boolean  @default(true)
+  lastLogin     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  biometricData BiometricData[]
+  sessions      UserSession[]
+  auditLogs     AuditLog[]
+  alertsCreated Alert[]
+  
+  @@map("users")
+}
+
+model UserSession {
+  id           String    @id @default(cuid())
+  userId       String
+  sessionToken String    @unique
+  ipAddress    String?
+  userAgent    String?
+  isActive     Boolean   @default(true)
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("user_sessions")
+}
+
+// Biometric Authentication
+model BiometricData {
+  id              String          @id @default(cuid())
+  userId          String
+  biometricType   String          // FINGERPRINT, FACIAL_RECOGNITION, IRIS_SCAN, VOICE_RECOGNITION
+  templateData    String          // Encrypted biometric template
+  confidence      Float
+  isActive        Boolean         @default(true)
+  enrolledAt      DateTime        @default(now())
+  lastUsed        DateTime?
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  authentications BiometricAuth[]
+  
+  @@map("biometric_data")
+}
+
+model BiometricAuth {
+  id              String        @id @default(cuid())
+  biometricDataId String
+  confidence      Float
+  status          String        // SUCCESS, FAILED, PENDING
+  ipAddress       String?
+  deviceInfo      String?
+  createdAt       DateTime      @default(now())
+  
+  biometricData BiometricData @relation(fields: [biometricDataId], references: [id], onDelete: Cascade)
+  
+  @@map("biometric_auth")
+}
+
+// Security Monitoring
+model ThreatEvent {
+  id             String        @id @default(cuid())
+  type           String
+  severity       String        // CRITICAL, HIGH, MEDIUM, LOW
+  title          String
+  description    String
+  sourceIp       String?
+  targetIp       String?
+  location       String?
+  source         String
+  status         String        @default("DETECTED") // DETECTED, INVESTIGATING, BLOCKED, RESOLVED, FALSE_POSITIVE
+  confidence     Float
+  riskScore      Int
+  metadataJson   String?       // JSON string for metadata
+  detectedAt     DateTime      @default(now())
+  resolvedAt     DateTime?
+  
+  alerts Alert[]
+  
+  @@map("threat_events")
+}
+
+model Alert {
+  id           String        @id @default(cuid())
+  threatEventId String?
+  userId       String?
+  type         String        // SECURITY_BREACH, FRAUD_DETECTED, SYSTEM_ANOMALY, etc.
+  severity     String        // CRITICAL, HIGH, MEDIUM, LOW
+  title        String
+  message      String
+  isRead       Boolean       @default(false)
+  isResolved   Boolean       @default(false)
+  metadataJson String?       // JSON string for metadata
+  createdAt    DateTime      @default(now())
+  resolvedAt   DateTime?
+  
+  threatEvent ThreatEvent? @relation(fields: [threatEventId], references: [id], onDelete: SetNull)
+  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  @@map("alerts")
+}
+
+// Fraud Detection
+model FraudEvent {
+  id                String          @id @default(cuid())
+  transactionId     String          @unique
+  userId            String?
+  amount            Float
+  currency          String          @default("USD")
+  merchantId        String?
+  merchantName      String?
+  riskScore         Float
+  fraudType         String
+  status            String          // FLAGGED, REVIEWING, CONFIRMED_FRAUD, FALSE_POSITIVE, BLOCKED
+  reasonsJson       String?         // JSON string for reasons array
+  location          String?
+  deviceFingerprint String?
+  ipAddress         String?
+  metadataJson      String?         // JSON string for metadata
+  detectedAt        DateTime        @default(now())
+  reviewedAt        DateTime?
+  
+  @@map("fraud_events")
+}
+
+// Blockchain Security
+model BlockchainTransaction {
+  id              String              @id @default(cuid())
+  transactionHash String              @unique
+  blockNumber     Int
+  blockHash       String
+  fromAddress     String
+  toAddress       String
+  amount          Float
+  gasUsed         Int
+  gasPrice        Float
+  status          String              // PENDING, CONFIRMED, FAILED, REJECTED
+  confirmations   Int                 @default(0)
+  timestamp       DateTime
+  verifiedAt      DateTime            @default(now())
+  
+  verifications BlockchainVerification[]
+  
+  @@map("blockchain_transactions")
+}
+
+model BlockchainVerification {
+  id            String               @id @default(cuid())
+  transactionId String
+  verifierNode  String
+  signature     String
+  isValid       Boolean
+  timestamp     DateTime             @default(now())
+  
+  transaction BlockchainTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  
+  @@map("blockchain_verifications")
+}
+
+// Security Metrics
+model SecurityMetric {
+  id        String     @id @default(cuid())
+  name      String
+  value     Float
+  unit      String?
+  category  String
+  timestamp DateTime   @default(now())
+  metadataJson String? // JSON string for metadata
+  
+  @@map("security_metrics")
+}
+
+// Audit Logging
+model AuditLog {
+  id         String    @id @default(cuid())
+  userId     String?
+  action     String
+  resource   String
+  detailsJson String?  // JSON string for details
+  ipAddress  String?
+  userAgent  String?
+  success    Boolean   @default(true)
+  timestamp  DateTime  @default(now())
+  
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  @@map("audit_logs")
+}
+
+// Zero Trust Access Control
+model AccessPolicy {
+  id          String         @id @default(cuid())
+  name        String
+  description String?
+  resource    String
+  action      String
+  conditionsJson String      // JSON string for conditions
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  
+  requests AccessRequest[]
+  
+  @@map("access_policies")
+}
+
+model AccessRequest {
+  id         String        @id @default(cuid())
+  policyId   String
+  userId     String
+  resource   String
+  action     String
+  status     String        @default("PENDING") // PENDING, APPROVED, DENIED, EXPIRED
+  reason     String?
+  metadataJson String?     // JSON string for metadata
+  requestedAt DateTime     @default(now())
+  reviewedAt  DateTime?
+  expiresAt   DateTime?
+  
+  policy AccessPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  
+  @@map("access_requests")
+}
+
+// Configuration
+model SystemConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  category  String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("system_config")
+}
